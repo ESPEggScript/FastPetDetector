@@ -1,0 +1,117 @@
+repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
+
+local player = game.Players.LocalPlayer
+local runService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+-- ✅ Rare pet list
+local rarePets = {
+    ["Racoon"] = true,
+    ["Dragonfly"] = true,
+    ["Red Fox"] = true,
+    ["Queen Bee"] = true,
+    ["Disco Bee"] = true,
+    ["Butterfly"] = true,
+    -- Add more if needed
+}
+
+local desiredFound = false
+
+-- Create ESP
+local function createESP(targetPart, displayText)
+    if not targetPart or targetPart:FindFirstChild("EggESP") then return end
+
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "EggESP"
+    gui.Adornee = targetPart
+    gui.Size = UDim2.new(0, 100, 0, 30)
+    gui.StudsOffset = Vector3.new(0, 3, 0)
+    gui.AlwaysOnTop = true
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = displayText
+    label.TextColor3 = Color3.fromRGB(255, 255, 0)
+    label.TextStrokeTransparency = 0.4
+    label.Font = Enum.Font.GothamBold
+    label.TextScaled = true
+    label.Parent = gui
+
+    gui.Parent = targetPart
+end
+
+-- Scan pet name inside egg
+local function getPetName(eggModel)
+    for _, child in pairs(eggModel:GetDescendants()) do
+        if child:IsA("StringValue") and child.Name:lower():find("pet") then
+            return child.Value
+        elseif child:IsA("Model") and child.Name ~= "Egg" then
+            return child.Name
+        end
+    end
+    return "Unknown Pet"
+end
+
+-- Teleport to another server
+local function serverHop()
+    local gameId = game.PlaceId
+    local servers = {}
+    local cursor = ""
+    local success, response
+
+    repeat
+        success, response = pcall(function()
+            local url = "https://games.roblox.com/v1/games/" .. gameId .. "/servers/Public?sortOrder=Asc&limit=100&cursor=" .. cursor
+            return HttpService:JSONDecode(game:HttpGet(url))
+        end)
+
+        if success and response then
+            for _, srv in pairs(response.data) do
+                if srv.playing < srv.maxPlayers and srv.id ~= game.JobId then
+                    table.insert(servers, srv.id)
+                end
+            end
+            cursor = response.nextPageCursor or ""
+        end
+        task.wait(1)
+    until not cursor
+
+    if #servers > 0 then
+        local randomServer = servers[math.random(1, #servers)]
+        TeleportService:TeleportToPlaceInstance(gameId, randomServer, player)
+    else
+        warn("❌ No available servers to hop.")
+    end
+end
+
+-- Main egg scanning logic
+local function scanEggs()
+    local found = false
+
+    for _, egg in pairs(workspace:GetDescendants()) do
+        if egg:IsA("Model") and egg.Name:lower():find("egg") then
+            local mainPart = egg:FindFirstChildWhichIsA("BasePart")
+            if mainPart and not mainPart:FindFirstChild("EggESP") then
+                local petName = getPetName(egg)
+                createESP(mainPart, petName)
+
+                if rarePets[petName] then
+                    found = true
+                    warn("🌟 Found rare pet:", petName)
+                end
+            end
+        end
+    end
+
+    if not found then
+        warn("⛔ No rare pets found. Hopping server...")
+        task.wait(2)
+        serverHop()
+    end
+end
+
+-- Loop
+task.wait(5)
+pcall(scanEggs)
